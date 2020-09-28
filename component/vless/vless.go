@@ -7,26 +7,31 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-const Version byte = 0 // protocol version. preview version is 0
+const (
+	XRO          = "xtls-rprx-origin"
+	Version byte = 0 // protocol version. preview version is 0
+)
 
 // Client is vless connection generator
 type Client struct {
-	uuid *uuid.UUID
+	UUID   *uuid.UUID
+	Addons *Addons
 }
 
 // StreamConn return a Conn with net.Conn and DstAddr
 func (c *Client) StreamConn(conn net.Conn, dst *vmess.DstAddr) (net.Conn, error) {
-	return newConn(conn, c.uuid, dst)
+	return newConn(conn, c, dst)
 }
 
 // NewClient return Client instance
-func NewClient(uuidStr string) (*Client, error) {
+func NewClient(uuidStr string, addons *Addons) (*Client, error) {
 	uid, err := uuid.FromString(uuidStr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		uuid: &uid,
+		UUID:   &uid,
+		Addons: addons,
 	}, nil
 }

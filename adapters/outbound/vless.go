@@ -14,6 +14,11 @@ import (
 	"github.com/Dreamacro/clash/component/vless"
 	"github.com/Dreamacro/clash/component/vmess"
 	C "github.com/Dreamacro/clash/constant"
+	xtls "github.com/xtls/go"
+)
+
+var (
+	xtlsSessionCache xtls.ClientSessionCache
 )
 
 type Vless struct {
@@ -34,6 +39,14 @@ type VlessOption struct {
 	WSHeaders      map[string]string `proxy:"ws-headers,omitempty"`
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName     string            `proxy:"servername,omitempty"`
+	Flow           string            `proxy:"flow,omitempty"`
+}
+
+func getXTLSSessionCache() xtls.ClientSessionCache {
+	once.Do(func() {
+		xtlsSessionCache = xtls.NewLRUClientSessionCache(128)
+	})
+	return xtlsSessionCache
 }
 
 func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
@@ -66,20 +79,40 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		// handle TLS
 		if v.option.TLS {
 			host, _, _ := net.SplitHostPort(v.addr)
-			tlsConfig := &tls.Config{
-				ServerName:         host,
-				InsecureSkipVerify: v.option.SkipCertVerify,
-				ClientSessionCache: getClientSessionCache(),
-			}
-			if v.option.ServerName != "" {
-				tlsConfig.ServerName = v.option.ServerName
-			}
-			tlsConn := tls.Client(c, tlsConfig)
-			if err = tlsConn.Handshake(); err != nil {
-				return nil, err
+
+			if v.option.Flow == vless.XRO {
+				xtlsConfig := &xtls.Config{
+					ServerName:         host,
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					ClientSessionCache: getXTLSSessionCache(),
+				}
+
+				if v.option.ServerName != "" {
+					xtlsConfig.ServerName = v.option.ServerName
+				}
+				xtlsConn := xtls.Client(c, xtlsConfig)
+				if err = xtlsConn.Handshake(); err != nil {
+					return nil, err
+				}
+
+				c = xtlsConn
+			} else {
+				tlsConfig := &tls.Config{
+					ServerName:         host,
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					ClientSessionCache: getClientSessionCache(),
+				}
+				if v.option.ServerName != "" {
+					tlsConfig.ServerName = v.option.ServerName
+				}
+				tlsConn := tls.Client(c, tlsConfig)
+				if err = tlsConn.Handshake(); err != nil {
+					return nil, err
+				}
+
+				c = tlsConn
 			}
 
-			c = tlsConn
 		}
 	}
 
@@ -126,7 +159,14 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 }
 
 func NewVless(option VlessOption) (*Vless, error) {
-	client, err := vless.NewClient(option.UUID)
+	var addons *vless.Addons
+	if option.TLS && option.Flow == vless.XRO {
+		addons = &vless.Addons{
+			Flow: vless.XRO,
+		}
+	}
+
+	client, err := vless.NewClient(option.UUID, addons)
 	if err != nil {
 		return nil, err
 	}

@@ -20,4 +20,6 @@ require (
 	golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd
 	gopkg.in/eapache/channels.v1 v1.1.0
 	gopkg.in/yaml.v2 v2.3.0
+	github.com/xtls/go v0.0.0-20200921133830-416584838a0f
+	github.com/golang/protobuf v1.4.2
 )
