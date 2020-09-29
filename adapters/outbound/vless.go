@@ -1,7 +1,6 @@
 package outbound
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -18,6 +17,11 @@ import (
 	"github.com/Dreamacro/clash/component/vmess"
 	C "github.com/Dreamacro/clash/constant"
 	xtls "github.com/xtls/go"
+)
+
+const (
+	// max packet length
+	maxLength = 8192
 )
 
 type Vless struct {
@@ -182,20 +186,55 @@ func NewVless(option VlessOption) (*Vless, error) {
 }
 
 func newLenghtPacketConn(vc *vmessPacketConn) *lengthPacketConn {
-	return &lengthPacketConn{vmessPacketConn: vc}
+	return &lengthPacketConn{vmessPacketConn: vc,
+		cache: make([]byte, 0, maxLength+2),
+	}
 }
 
 type lengthPacketConn struct {
 	*vmessPacketConn
 	remain int
 	mux    sync.Mutex
+	cache  []byte
+}
+
+func (c *lengthPacketConn) writePacket(b []byte, addr net.Addr) (int, error) {
+	length := len(b)
+	defer func() {
+		c.cache = c.cache[:0]
+	}()
+	c.cache = append(c.cache, byte(length>>8), byte(length))
+	c.cache = append(c.cache, b...)
+	n, err := c.Conn.Write(c.cache)
+	if n > 2 {
+		return n - 2, err
+	}
+
+	return 0, err
 }
 
 func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	buf := &bytes.Buffer{}
-	binary.Write(buf, binary.BigEndian, uint16(len(b)))
-	buf.Write(b)
-	return c.Conn.Write(buf.Bytes())
+	if len(b) <= maxLength {
+		return c.writePacket(b, addr)
+	}
+
+	offset := 0
+	total := len(b)
+	for offset < total {
+		cursor := offset + maxLength
+		if cursor > total {
+			cursor = total
+		}
+
+		n, err := c.writePacket(b[offset:cursor], addr)
+		if err != nil {
+			return offset + n, err
+		}
+
+		offset = cursor
+	}
+
+	return total, nil
 }
 
 func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
