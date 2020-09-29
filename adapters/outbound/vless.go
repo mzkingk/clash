@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/Dreamacro/clash/component/dialer"
 	"github.com/Dreamacro/clash/component/resolver"
@@ -186,6 +187,8 @@ func newLenghtPacketConn(vc *vmessPacketConn) *lengthPacketConn {
 
 type lengthPacketConn struct {
 	*vmessPacketConn
+	remain int
+	mux    sync.Mutex
 }
 
 func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -196,12 +199,34 @@ func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 }
 
 func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	var packetLength uint16
-	if err := binary.Read(c.Conn, binary.BigEndian, &packetLength); err != nil {
-		return 0, c.rAddr, err
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	length := len(b)
+	if c.remain > 0 {
+		if c.remain < length {
+			length = c.remain
+		}
+
+		n, err := c.Conn.Read(b[:length])
+		if err != nil {
+			return 0, nil, err
+		}
+
+		c.remain -= n
+		return n, c.rAddr, nil
 	}
 
-	length := int(packetLength)
+	var packetLength uint16
+	if err := binary.Read(c.Conn, binary.BigEndian, &packetLength); err != nil {
+		return 0, nil, err
+	}
+
+	remain := int(packetLength)
 	n, err := c.Conn.Read(b[:length])
+	remain -= n
+	if remain > 0 {
+		c.remain = remain
+	}
 	return n, c.rAddr, err
 }
