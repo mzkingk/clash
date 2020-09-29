@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -147,11 +149,12 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
 
-	var packetConn net.PacketConn = &vlessPacketConn{Conn: c, rAddr: metadata.UDPAddr()}
+	vc := &vmessPacketConn{Conn: c, rAddr: metadata.UDPAddr()}
+	var pc net.PacketConn = vc
 	if v.option.Flow == vless.XRO {
-		packetConn = &lengthPacketConn{PacketConn: packetConn}
+		pc = newLenghtPacketConn(vc)
 	}
-	return newPacketConn(packetConn, v), nil
+	return newPacketConn(pc, v), nil
 }
 
 func NewVless(option VlessOption) (*Vless, error) {
@@ -179,22 +182,12 @@ func NewVless(option VlessOption) (*Vless, error) {
 	}, nil
 }
 
-type vlessPacketConn struct {
-	net.Conn
-	rAddr net.Addr
-}
-
-func (uc *vlessPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	return uc.Conn.Write(b)
-}
-
-func (uc *vlessPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	n, err := uc.Conn.Read(b)
-	return n, uc.rAddr, err
+func newLenghtPacketConn(vc *vmessPacketConn) *lengthPacketConn {
+	return &lengthPacketConn{vmessPacketConn: vc}
 }
 
 type lengthPacketConn struct {
-	net.PacketConn
+	*vmessPacketConn
 	lengthBytes [2]byte
 }
 
@@ -202,15 +195,22 @@ func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	buf := &bytes.Buffer{}
 	binary.Write(buf, binary.BigEndian, uint16(len(b)))
 	buf.Write(b)
-	return c.PacketConn.WriteTo(buf.Bytes(), addr)
+	return c.Conn.Write(buf.Bytes())
 }
 
 func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	n, addr, err := c.PacketConn.ReadFrom(c.lengthBytes[:])
-	if err != nil {
-		return n, addr, err
+	if _, err := io.ReadFull(c.Conn, c.lengthBytes[:]); err != nil {
+		return 0, c.rAddr, err
 	}
 
-	_ = int32(c.lengthBytes[0])<<8 | int32(c.lengthBytes[1])
-	return c.PacketConn.ReadFrom(b)
+	length := int(c.lengthBytes[0])<<8 | int(c.lengthBytes[1])
+	n, err := io.ReadFull(c.Conn, b)
+	if err != nil {
+		return n, c.rAddr, err
+	}
+
+	if length > n {
+		io.CopyN(ioutil.Discard, c.Conn, int64(length-n)) // just discard the rest of data
+	}
+	return n, c.rAddr, err
 }
