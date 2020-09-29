@@ -13,6 +13,7 @@ import (
 	"github.com/Dreamacro/clash/component/resolver"
 	"github.com/Dreamacro/clash/component/socks5"
 	C "github.com/Dreamacro/clash/constant"
+	xtls "github.com/xtls/go"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 
 var (
 	globalClientSessionCache tls.ClientSessionCache
+	xtlsSessionCache         xtls.ClientSessionCache
 	once                     sync.Once
 )
 
@@ -64,6 +66,13 @@ func getClientSessionCache() tls.ClientSessionCache {
 		globalClientSessionCache = tls.NewLRUClientSessionCache(128)
 	})
 	return globalClientSessionCache
+}
+
+func getXTLSSessionCache() xtls.ClientSessionCache {
+	once.Do(func() {
+		xtlsSessionCache = xtls.NewLRUClientSessionCache(128)
+	})
+	return xtlsSessionCache
 }
 
 func serializesSocksAddr(metadata *C.Metadata) []byte {

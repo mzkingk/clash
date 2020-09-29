@@ -1,8 +1,10 @@
 package outbound
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -15,10 +17,6 @@ import (
 	"github.com/Dreamacro/clash/component/vmess"
 	C "github.com/Dreamacro/clash/constant"
 	xtls "github.com/xtls/go"
-)
-
-var (
-	xtlsSessionCache xtls.ClientSessionCache
 )
 
 type Vless struct {
@@ -40,13 +38,6 @@ type VlessOption struct {
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName     string            `proxy:"servername,omitempty"`
 	Flow           string            `proxy:"flow,omitempty"`
-}
-
-func getXTLSSessionCache() xtls.ClientSessionCache {
-	once.Do(func() {
-		xtlsSessionCache = xtls.NewLRUClientSessionCache(128)
-	})
-	return xtlsSessionCache
 }
 
 func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
@@ -155,7 +146,12 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
-	return newPacketConn(&vlessPacketConn{Conn: c, rAddr: metadata.UDPAddr()}, v), nil
+
+	var packetConn net.PacketConn = &vlessPacketConn{Conn: c, rAddr: metadata.UDPAddr()}
+	if v.option.Flow == vless.XRO {
+		packetConn = &lengthPacketConn{PacketConn: packetConn}
+	}
+	return newPacketConn(packetConn, v), nil
 }
 
 func NewVless(option VlessOption) (*Vless, error) {
@@ -195,4 +191,26 @@ func (uc *vlessPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 func (uc *vlessPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := uc.Conn.Read(b)
 	return n, uc.rAddr, err
+}
+
+type lengthPacketConn struct {
+	net.PacketConn
+	lengthBytes [2]byte
+}
+
+func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, uint16(len(b)))
+	buf.Write(b)
+	return c.PacketConn.WriteTo(buf.Bytes(), addr)
+}
+
+func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	n, addr, err := c.PacketConn.ReadFrom(c.lengthBytes[:])
+	if err != nil {
+		return n, addr, err
+	}
+
+	_ = int32(c.lengthBytes[0])<<8 | int32(c.lengthBytes[1])
+	return c.PacketConn.ReadFrom(b)
 }
