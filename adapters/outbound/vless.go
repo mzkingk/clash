@@ -7,8 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -188,7 +186,6 @@ func newLenghtPacketConn(vc *vmessPacketConn) *lengthPacketConn {
 
 type lengthPacketConn struct {
 	*vmessPacketConn
-	lengthBytes [2]byte
 }
 
 func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -199,18 +196,12 @@ func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 }
 
 func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	if _, err := io.ReadFull(c.Conn, c.lengthBytes[:]); err != nil {
+	var packetLength uint16
+	if err := binary.Read(c.Conn, binary.BigEndian, &packetLength); err != nil {
 		return 0, c.rAddr, err
 	}
 
-	length := int(c.lengthBytes[0])<<8 | int(c.lengthBytes[1])
-	n, err := io.ReadFull(c.Conn, b)
-	if err != nil {
-		return n, c.rAddr, err
-	}
-
-	if length > n {
-		io.CopyN(ioutil.Discard, c.Conn, int64(length-n)) // just discard the rest of data
-	}
+	length := int(packetLength)
+	n, err := c.Conn.Read(b[:length])
 	return n, c.rAddr, err
 }
