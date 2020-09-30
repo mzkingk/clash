@@ -152,17 +152,12 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
 
-	vc := &vmessPacketConn{Conn: c, rAddr: metadata.UDPAddr()}
-	var pc net.PacketConn = vc
-	if v.option.Flow == vless.XRO {
-		pc = newLenghtPacketConn(vc)
-	}
-	return newPacketConn(pc, v), nil
+	return newPacketConn(newVlessPacketConn(c, metadata.UDPAddr()), v), nil
 }
 
 func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
-	if option.TLS && option.Flow == vless.XRO {
+	if option.TLS && option.Network != "ws" && option.Flow == vless.XRO {
 		addons = &vless.Addons{
 			Flow: vless.XRO,
 		}
@@ -185,20 +180,22 @@ func NewVless(option VlessOption) (*Vless, error) {
 	}, nil
 }
 
-func newLenghtPacketConn(vc *vmessPacketConn) *lengthPacketConn {
-	return &lengthPacketConn{vmessPacketConn: vc,
+func newVlessPacketConn(c net.Conn, addr net.Addr) *vlessPacketConn {
+	return &vlessPacketConn{Conn: c,
+		rAddr: addr,
 		cache: make([]byte, 0, maxLength+2),
 	}
 }
 
-type lengthPacketConn struct {
-	*vmessPacketConn
+type vlessPacketConn struct {
+	net.Conn
+	rAddr  net.Addr
 	remain int
 	mux    sync.Mutex
 	cache  []byte
 }
 
-func (c *lengthPacketConn) writePacket(b []byte, addr net.Addr) (int, error) {
+func (c *vlessPacketConn) writePacket(b []byte, addr net.Addr) (int, error) {
 	length := len(b)
 	defer func() {
 		c.cache = c.cache[:0]
@@ -213,7 +210,7 @@ func (c *lengthPacketConn) writePacket(b []byte, addr net.Addr) (int, error) {
 	return 0, err
 }
 
-func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+func (c *vlessPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	if len(b) <= maxLength {
 		return c.writePacket(b, addr)
 	}
@@ -237,7 +234,7 @@ func (c *lengthPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	return total, nil
 }
 
-func (c *lengthPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
+func (c *vlessPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 

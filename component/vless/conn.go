@@ -9,15 +9,16 @@ import (
 	"net"
 
 	"github.com/Dreamacro/clash/component/vmess"
+	"github.com/gofrs/uuid"
 	"github.com/golang/protobuf/proto"
 	xtls "github.com/xtls/go"
 )
 
 type Conn struct {
 	net.Conn
-	dst    *vmess.DstAddr
-	client *Client
-
+	dst      *vmess.DstAddr
+	id       *uuid.UUID
+	addons   *Addons
 	received bool
 }
 
@@ -36,10 +37,10 @@ func (vc *Conn) Read(b []byte) (int, error) {
 func (vc *Conn) sendRequest() error {
 	buf := &bytes.Buffer{}
 
-	buf.WriteByte(Version)            // protocol version
-	buf.Write(vc.client.UUID.Bytes()) // 16 bytes of uuid
-	if vc.client.Addons != nil {
-		bytes, err := proto.Marshal(vc.client.Addons)
+	buf.WriteByte(Version)   // protocol version
+	buf.Write(vc.id.Bytes()) // 16 bytes of uuid
+	if vc.addons != nil {
+		bytes, err := proto.Marshal(vc.addons)
 		if err != nil {
 			return err
 		}
@@ -94,14 +95,15 @@ func (vc *Conn) recvResponse() error {
 // newConn return a Conn instance
 func newConn(conn net.Conn, client *Client, dst *vmess.DstAddr) (*Conn, error) {
 	c := &Conn{
-		Conn:   conn,
-		client: client,
-		dst:    dst,
+		id:   client.UUID,
+		Conn: conn,
+		dst:  dst,
 	}
 	if client.Addons != nil {
 		switch client.Addons.Flow {
 		case XRO:
 			if xtlsConn, ok := conn.(*xtls.Conn); ok && !dst.UDP {
+				c.addons = client.Addons
 				xtlsConn.RPRX = true
 			}
 		}
