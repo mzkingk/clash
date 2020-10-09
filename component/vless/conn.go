@@ -99,12 +99,16 @@ func newConn(conn net.Conn, client *Client, dst *vmess.DstAddr) (*Conn, error) {
 		Conn: conn,
 		dst:  dst,
 	}
-	if client.Addons != nil {
+	if !dst.UDP && client.Addons != nil {
 		switch client.Addons.Flow {
-		case XRO:
-			if xtlsConn, ok := conn.(*xtls.Conn); ok && !dst.UDP {
+		case XRO, XRD:
+			if xtlsConn, ok := conn.(*xtls.Conn); ok {
 				c.addons = client.Addons
 				xtlsConn.RPRX = true
+
+				if client.Addons.Flow == XRD {
+					xtlsConn.DirectMode = true
+				}
 			}
 		}
 	}

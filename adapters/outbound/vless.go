@@ -76,7 +76,7 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		if v.option.TLS {
 			host, _, _ := net.SplitHostPort(v.addr)
 
-			if v.option.Flow == vless.XRO {
+			if v.option.Flow == vless.XRO || v.option.Flow == vless.XRD {
 				xtlsConfig := &xtls.Config{
 					ServerName:         host,
 					InsecureSkipVerify: v.option.SkipCertVerify,
@@ -157,9 +157,14 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 
 func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
-	if option.TLS && option.Network != "ws" && option.Flow == vless.XRO {
-		addons = &vless.Addons{
-			Flow: vless.XRO,
+	if option.TLS && option.Network != "ws" && option.Flow != "" {
+		switch option.Flow {
+		case vless.XRO, vless.XRD:
+			addons = &vless.Addons{
+				Flow: option.Flow,
+			}
+		default:
+			return nil, fmt.Errorf("unsupported vless flow type: %s", option.Flow)
 		}
 	}
 

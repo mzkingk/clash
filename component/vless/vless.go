@@ -9,6 +9,7 @@ import (
 
 const (
 	XRO          = "xtls-rprx-origin"
+	XRD          = "xtls-rprx-direct"
 	Version byte = 0 // protocol version. preview version is 0
 )
 
