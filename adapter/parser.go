@@ -61,7 +61,7 @@ func ParseProxy(mapping map[string]interface{}) (C.Proxy, error) {
 		}
 		proxy, err = outbound.NewVmess(*vmessOption)
 	case "vless":
-		vlessOption := &VlessOption{}
+		vlessOption := &outbound.VlessOption{}
 		err = decoder.Decode(mapping, vlessOption)
 		if err != nil {
 			break
