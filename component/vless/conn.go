@@ -2,14 +2,10 @@ package vless
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/md5"
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"hash/fnv"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -20,7 +16,6 @@ import (
 	"github.com/gofrs/uuid"
 	xtls "github.com/xtls/go"
 	"google.golang.org/protobuf/proto"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 func init() {

@@ -32,7 +32,6 @@ type Vless struct {
 	*Base
 	client *vless.Client
 	option *VlessOption
-	
 	// for gun mux
 	gunTLSConfig *tls.Config
 	gunConfig    *gun.Config
@@ -56,21 +55,6 @@ type VlessOption struct {
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName     string            `proxy:"servername,omitempty"`
 	Flow           string            `proxy:"flow,omitempty"`
-}
-
-type HTTPOptions struct {
-	Method  string              `proxy:"method,omitempty"`
-	Path    []string            `proxy:"path,omitempty"`
-	Headers map[string][]string `proxy:"headers,omitempty"`
-}
-
-type HTTP2Options struct {
-	Host []string `proxy:"host,omitempty"`
-	Path string   `proxy:"path,omitempty"`
-}
-
-type GrpcOptions struct {
-	GrpcServiceName string `proxy:"grpc-service-name,omitempty"`
 }
 
 func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
@@ -182,7 +166,6 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn
 
 		return NewConn(c, v), nil
 	}
-	
 	c, err := dialer.DialContext(ctx, "tcp", v.addr)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
@@ -193,7 +176,7 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn
 	return NewConn(c, v), err
 }
 
-func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
+func (v *Vless) DialUDP(metadata *C.Metadata) (_ C.PacketConn, err error) {
 	// vless use stream-oriented udp, so clash needs a net.UDPAddr
 	if !metadata.Resolved() {
 		ip, err := resolver.ResolveIP(metadata.Host)
@@ -225,7 +208,7 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 
 		c, err = v.StreamConn(c, metadata)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
@@ -243,21 +226,35 @@ func NewVless(option VlessOption) (*Vless, error) {
 		default:
 			return nil, fmt.Errorf("unsupported vless flow type: %s", option.Flow)
 		}
-		client, err := vless.NewClient(option.UUID, addons)
-	} else {
-		security := strings.ToLower(option.Cipher)
-		client, err := vless.NewClient(vmess.Config{
-			UUID:     option.UUID,
-			Security: security,
-			HostName: option.Server,
-			Port:     strconv.Itoa(option.Port)
-		})
+		client, err := vless.NewClientFlow(option.UUID, addons)
+		if err != nil {
+			return nil, err
+		}
+
+		return &Vless{
+			Base: &Base{
+				name: option.Name,
+				addr: net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
+				tp:   C.Vless,
+				udp:  true,
+			},
+			client: client,
+			option: &option,
+		}, nil
 	}
+
+	security := strings.ToLower(option.Cipher)
+	client, err := vless.NewClient(vless.Config{
+		UUID:     option.UUID,
+		Security: security,
+		HostName: option.Server,
+		Port:     strconv.Itoa(option.Port),
+	})
 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	switch option.Network {
 	case "h2", "grpc":
 		if !option.TLS {
@@ -274,8 +271,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 		},
 		client: client,
 		option: &option,
-	}, nil
-	
+	}
+
 	switch option.Network {
 	case "h2":
 		if len(option.HTTP2Opts.Host) == 0 {

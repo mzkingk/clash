@@ -2,10 +2,10 @@ package vless
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"runtime"
 
+	"github.com/Dreamacro/clash/transport/vmess"
 	"github.com/gofrs/uuid"
 )
 
@@ -76,12 +76,12 @@ type Config struct {
 }
 
 // StreamConn return a Conn with net.Conn and DstAddr
-func (c *Client) StreamConn(conn net.Conn, dst *DstAddr) (net.Conn, error) {
+func (c *Client) StreamConn(conn net.Conn, dst *vmess.DstAddr) (net.Conn, error) {
 	return newConn(conn, c, dst)
 }
 
 // NewClient return Client instance
-func NewClient(uuidStr string, addons *Addons) (*Client, error) {
+func NewClientFlow(uuidStr string, addons *Addons) (*Client, error) {
 	uid, err := uuid.FromString(uuidStr)
 	if err != nil {
 		return nil, err
@@ -119,6 +119,6 @@ func NewClient(config Config) (*Client, error) {
 
 	return &Client{
 		UUID:     &uid,
-		security: security
+		security: security,
 	}, nil
 }
