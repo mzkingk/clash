@@ -6,6 +6,8 @@ on:
   #  branches: [ master ]
   #  tags:
   #  - 'v*'
+  watch:
+    types: [started]
   
 jobs:
 
