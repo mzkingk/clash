@@ -10,14 +10,17 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Dreamacro/clash/component/dialer"
 	"github.com/Dreamacro/clash/component/resolver"
 	"github.com/Dreamacro/clash/component/vless"
+	"github.com/Dreamacro/clash/transport/gun"
 	"github.com/Dreamacro/clash/transport/vmess"
 	C "github.com/Dreamacro/clash/constant"
 	xtls "github.com/xtls/go"
+	"golang.org/x/net/http2"
 )
 
 const (
@@ -29,6 +32,11 @@ type Vless struct {
 	*Base
 	client *vless.Client
 	option *VlessOption
+	
+	// for gun mux
+	gunTLSConfig *tls.Config
+	gunConfig    *gun.Config
+	transport    *http2.Transport
 }
 
 type VlessOption struct {
@@ -39,11 +47,29 @@ type VlessOption struct {
 	UDP            bool              `proxy:"udp,omitempty"`
 	TLS            bool              `proxy:"tls,omitempty"`
 	Network        string            `proxy:"network,omitempty"`
+	HTTPOpts       HTTPOptions       `proxy:"http-opts,omitempty"`
+	HTTP2Opts      HTTP2Options      `proxy:"h2-opts,omitempty"`
+	GrpcOpts       GrpcOptions       `proxy:"grpc-opts,omitempty"`
 	WSPath         string            `proxy:"ws-path,omitempty"`
 	WSHeaders      map[string]string `proxy:"ws-headers,omitempty"`
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName     string            `proxy:"servername,omitempty"`
 	Flow           string            `proxy:"flow,omitempty"`
+}
+
+type HTTPOptions struct {
+	Method  string              `proxy:"method,omitempty"`
+	Path    []string            `proxy:"path,omitempty"`
+	Headers map[string][]string `proxy:"headers,omitempty"`
+}
+
+type HTTP2Options struct {
+	Host []string `proxy:"host,omitempty"`
+	Path string   `proxy:"path,omitempty"`
+}
+
+type GrpcOptions struct {
+	GrpcServiceName string `proxy:"grpc-service-name,omitempty"`
 }
 
 func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
@@ -89,6 +115,8 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 			c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
 		}
 		//c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
+	case "grpc":
+		c, err = gun.StreamGunWithConn(c, v.gunTLSConfig, v.gunConfig)
 	default:
 		// handle TLS
 		if v.option.TLS {
@@ -183,14 +211,29 @@ func NewVless(option VlessOption) (*Vless, error) {
 		default:
 			return nil, fmt.Errorf("unsupported vless flow type: %s", option.Flow)
 		}
+		client, err := vless.NewClient(option.UUID, addons)
+	} else {
+		security := strings.ToLower(option.Cipher)
+		client, err := vless.NewClient(vmess.Config{
+			UUID:     option.UUID,
+			Security: security,
+			HostName: option.Server,
+			Port:     strconv.Itoa(option.Port)
+		})
 	}
 
-	client, err := vless.NewClient(option.UUID, addons)
 	if err != nil {
 		return nil, err
 	}
+	
+	switch option.Network {
+	case "h2", "grpc":
+		if !option.TLS {
+			return nil, fmt.Errorf("TLS must be true with h2/grpc network")
+		}
+	}
 
-	return &Vless{
+	v := &Vless{
 		Base: &Base{
 			name: option.Name,
 			addr: net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
@@ -200,6 +243,43 @@ func NewVless(option VlessOption) (*Vless, error) {
 		client: client,
 		option: &option,
 	}, nil
+	
+	switch option.Network {
+	case "h2":
+		if len(option.HTTP2Opts.Host) == 0 {
+			option.HTTP2Opts.Host = append(option.HTTP2Opts.Host, "www.example.com")
+		}
+	case "grpc":
+		dialFn := func(network, addr string) (net.Conn, error) {
+			c, err := dialer.DialContext(context.Background(), "tcp", v.addr)
+			if err != nil {
+				return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+			}
+			tcpKeepAlive(c)
+			return c, nil
+		}
+
+		gunConfig := &gun.Config{
+			ServiceName: v.option.GrpcOpts.GrpcServiceName,
+			Host:        v.option.ServerName,
+		}
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: v.option.SkipCertVerify,
+			ServerName:         v.option.ServerName,
+		}
+
+		if v.option.ServerName == "" {
+			host, _, _ := net.SplitHostPort(v.addr)
+			tlsConfig.ServerName = host
+			gunConfig.Host = host
+		}
+
+		v.gunTLSConfig = tlsConfig
+		v.gunConfig = gunConfig
+		v.transport = gun.NewHTTP2Client(dialFn, tlsConfig)
+	}
+
+	return v, nil
 }
 
 func newVlessPacketConn(c net.Conn, addr net.Addr) *vlessPacketConn {
