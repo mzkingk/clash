@@ -16,9 +16,6 @@ const (
 	Version byte = 0 // protocol version. preview version is 0
 )
 
-// Version of vless
-const Version byte = 1
-
 // Request Options
 const (
 	OptionChunkStream  byte = 1
