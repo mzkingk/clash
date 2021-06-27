@@ -45,7 +45,9 @@ jobs:
         env:
           NAME: clash
           BINDIR: bin
-        run: make -j releases
+        run: |
+          go env GO111MODULE=auto
+          make -j releases
 
       - name: Upload Release
         uses: softprops/action-gh-release@v1
