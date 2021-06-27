@@ -44,6 +44,7 @@ type VlessOption struct {
 	Server         string            `proxy:"server"`
 	Port           int               `proxy:"port"`
 	UUID           string            `proxy:"uuid"`
+	Cipher         string            `proxy:"cipher"`
 	UDP            bool              `proxy:"udp,omitempty"`
 	TLS            bool              `proxy:"tls,omitempty"`
 	Network        string            `proxy:"network,omitempty"`
@@ -162,10 +163,26 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		return nil, err
 	}
 
-	return v.client.StreamConn(c, parseVmessAddr(metadata))
+	return v.client.StreamConn(c, parseVlessAddr(metadata))
 }
 
-func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	// gun transport
+	if v.transport != nil {
+		c, err := gun.StreamGunWithTransport(v.transport, v.gunConfig)
+		if err != nil {
+			return nil, err
+		}
+		defer safeConnClose(c, err)
+
+		c, err = v.client.StreamConn(c, parseVlessAddr(metadata))
+		if err != nil {
+			return nil, err
+		}
+
+		return NewConn(c, v), nil
+	}
+	
 	c, err := dialer.DialContext(ctx, "tcp", v.addr)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
@@ -186,14 +203,29 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 		metadata.DstIP = ip
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), tcpTimeout)
-	defer cancel()
-	c, err := dialer.DialContext(ctx, "tcp", v.addr)
-	if err != nil {
-		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+	var c net.Conn
+	// gun transport
+	if v.transport != nil {
+		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
+		if err != nil {
+			return nil, err
+		}
+		defer safeConnClose(c, err)
+
+		c, err = v.client.StreamConn(c, parseVlessAddr(metadata))
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+		defer cancel()
+		c, err = dialer.DialContext(ctx, "tcp", v.addr)
+		if err != nil {
+			return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+		}
+		tcpKeepAlive(c)
+		defer safeConnClose(c, err)
+
+		c, err = v.StreamConn(c, metadata)
 	}
-	tcpKeepAlive(c)
-	c, err = v.StreamConn(c, metadata)
+	
 	if err != nil {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
@@ -286,6 +318,34 @@ func newVlessPacketConn(c net.Conn, addr net.Addr) *vlessPacketConn {
 	return &vlessPacketConn{Conn: c,
 		rAddr: addr,
 		cache: make([]byte, 0, maxLength+2),
+	}
+}
+
+func parseVlessAddr(metadata *C.Metadata) *vmess.DstAddr {
+	var addrType byte
+	var addr []byte
+	switch metadata.AddrType {
+	case C.AtypIPv4:
+		addrType = byte(vmess.AtypIPv4)
+		addr = make([]byte, net.IPv4len)
+		copy(addr[:], metadata.DstIP.To4())
+	case C.AtypIPv6:
+		addrType = byte(vmess.AtypIPv6)
+		addr = make([]byte, net.IPv6len)
+		copy(addr[:], metadata.DstIP.To16())
+	case C.AtypDomainName:
+		addrType = byte(vmess.AtypDomainName)
+		addr = make([]byte, len(metadata.Host)+1)
+		addr[0] = byte(len(metadata.Host))
+		copy(addr[1:], []byte(metadata.Host))
+	}
+
+	port, _ := strconv.Atoi(metadata.DstPort)
+	return &vmess.DstAddr{
+		UDP:      metadata.NetWork == C.UDP,
+		AddrType: addrType,
+		Addr:     addr,
+		Port:     uint(port),
 	}
 }
 
