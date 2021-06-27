@@ -3,7 +3,7 @@ package vless
 import (
 	"net"
 
-	"github.com/Dreamacro/clash/component/vmess"
+	"github.com/Dreamacro/clash/transport/vmess"
 	"github.com/gofrs/uuid"
 )
 

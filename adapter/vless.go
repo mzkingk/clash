@@ -15,7 +15,7 @@ import (
 	"github.com/Dreamacro/clash/component/dialer"
 	"github.com/Dreamacro/clash/component/resolver"
 	"github.com/Dreamacro/clash/component/vless"
-	"github.com/Dreamacro/clash/component/vmess"
+	"github.com/Dreamacro/clash/transport/vmess"
 	C "github.com/Dreamacro/clash/constant"
 	xtls "github.com/xtls/go"
 )
