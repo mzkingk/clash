@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -24,6 +25,8 @@ const (
 	// max packet length
 	maxLength = 8192
 )
+
+var bufPool = sync.Pool{New: func() interface{} { return &bytes.Buffer{} }}
 
 type Vless struct {
 	*Base
@@ -88,17 +91,16 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		} else {
 			c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
 		}
-		//c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
 	default:
 		// handle TLS
 		if v.option.TLS {
 			host, _, _ := net.SplitHostPort(v.addr)
 
-			if v.option.Flow == vless.XRO || v.option.Flow == vless.XRD || v.option.Flow == vless.XRS {
+			if v.option.Flow == vless.XRO || v.option.Flow == vless.XROU || v.option.Flow == vless.XRS || v.option.Flow == vless.XRSU || v.option.Flow == vless.XRD || v.option.Flow == vless.XRDU {
 				xtlsConfig := &xtls.Config{
 					ServerName:         host,
 					InsecureSkipVerify: v.option.SkipCertVerify,
-					ClientSessionCache: getXTLSSessionCache(),
+					ClientSessionCache: getClientXSessionCache(),
 				}
 
 				if v.option.ServerName != "" {
@@ -149,6 +151,10 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, 
 }
 
 func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
+	if (v.option.Flow == vless.XRO || v.option.Flow == vless.XRS || v.option.Flow == vless.XRD) && metadata.DstPort == "443" {
+		return nil, fmt.Errorf("%s stopped UDP/443", v.option.Flow)
+	}
+
 	// vless use stream-oriented udp, so clash needs a net.UDPAddr
 	if !metadata.Resolved() {
 		ip, err := resolver.ResolveIP(metadata.Host)
@@ -158,7 +164,7 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 		metadata.DstIP = ip
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), tcpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
 	defer cancel()
 	c, err := dialer.DialContext(ctx, "tcp", v.addr)
 	if err != nil {
@@ -176,7 +182,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
 	if option.TLS && option.Network != "ws" && option.Flow != "" {
 		switch option.Flow {
-		case vless.XRO, vless.XRD, vless.XRS:
+		case vless.XRO, vless.XRD, vless.XRS, vless.XROU, vless.XRDU, vless.XRSU:
 			addons = &vless.Addons{
 				Flow: option.Flow,
 			}

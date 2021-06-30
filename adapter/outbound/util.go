@@ -20,8 +20,8 @@ const (
 
 var (
 	globalClientSessionCache tls.ClientSessionCache
-	xtlsSessionCache         xtls.ClientSessionCache
-	once                     sync.Once
+	globalClientXSessionCache xtls.ClientSessionCache
+	once                      sync.Once
 )
 
 func tcpKeepAlive(c net.Conn) {
@@ -38,11 +38,11 @@ func getClientSessionCache() tls.ClientSessionCache {
 	return globalClientSessionCache
 }
 
-func getXTLSSessionCache() xtls.ClientSessionCache {
+func getClientXSessionCache() xtls.ClientSessionCache {
 	once.Do(func() {
-		xtlsSessionCache = xtls.NewLRUClientSessionCache(128)
+		globalClientXSessionCache = xtls.NewLRUClientSessionCache(128)
 	})
-	return xtlsSessionCache
+	return globalClientXSessionCache
 }
 
 func serializesSocksAddr(metadata *C.Metadata) []byte {

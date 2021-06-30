@@ -2,14 +2,11 @@ package vless
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/md5"
 	"encoding/binary"
 	"errors"
 	"io"
 	"io/ioutil"
 	"net"
-	"time"
 
 	"github.com/Dreamacro/clash/transport/vmess"
 	"github.com/gofrs/uuid"
@@ -38,13 +35,6 @@ func (vc *Conn) Read(b []byte) (int, error) {
 }
 
 func (vc *Conn) sendRequest() error {
-	timestamp := time.Now()
-
-	h := hmac.New(md5.New, vc.id.Bytes())
-	binary.Write(h, binary.BigEndian, uint64(timestamp.Unix()))
-	mbuf := &bytes.Buffer{}
-	mbuf.Write(h.Sum(nil))
-
 	buf := &bytes.Buffer{}
 
 	buf.WriteByte(Version)   // protocol version
@@ -73,8 +63,6 @@ func (vc *Conn) sendRequest() error {
 	buf.WriteByte(vc.dst.AddrType)
 	buf.Write(vc.dst.Addr)
 
-	//mbuf.Write(buf.Bytes())
-	//_, err := vc.Conn.Write(mbuf.Bytes())
 	_, err := vc.Conn.Write(buf.Bytes())
 	return err
 }
@@ -113,15 +101,15 @@ func newConn(conn net.Conn, client *Client, dst *vmess.DstAddr) (*Conn, error) {
 	}
 	if !dst.UDP && client.Addons != nil {
 		switch client.Addons.Flow {
-		case XRO, XRD, XRS:
+		case XRO, XRD, XRS, XRSU, XROU, XRDU:
 			if xtlsConn, ok := conn.(*xtls.Conn); ok {
 				c.addons = client.Addons
 				xtlsConn.RPRX = true
 				xtlsConn.MARK = "XTLS"
 				if client.Addons.Flow == XRS {
-					client.Addons.Flow = XRD //force to XRD
+					client.Addons.Flow = XRS // TODO:force to XRD
 				}
-				if client.Addons.Flow == XRD {
+				if client.Addons.Flow == XRD || client.Addons.Flow == XRDU {
 					xtlsConn.DirectMode = true
 				}
 			}

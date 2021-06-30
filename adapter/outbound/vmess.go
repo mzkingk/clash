@@ -108,7 +108,6 @@ func (v *Vmess) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		} else {
 			c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
 		}
-		//c, err = vmess.StreamWebsocketConn(c, wsOpts)
 	case "http":
 		// readability first, so just copy default TLS logic
 		if v.option.TLS {

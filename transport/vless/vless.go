@@ -11,6 +11,9 @@ const (
 	XRO          = "xtls-rprx-origin"
 	XRD          = "xtls-rprx-direct"
 	XRS          = "xtls-rprx-splice"
+	XROU         = "xtls-rprx-origin-udp443"
+	XRDU         = "xtls-rprx-direct-udp443"
+	XRSU         = "xtls-rprx-splice-udp443"
 	Version byte = 0 // protocol version. preview version is 0
 )
 

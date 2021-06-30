@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package component.vless;
-option go_package = "component/vless";
+package transport.vless;
+option go_package = "transport/vless";
 
 message Addons {
   string Flow = 1;
