@@ -14,8 +14,12 @@ import (
 	xtls "github.com/xtls/go"
 )
 
+const (
+	tcpTimeout = 5 * time.Second
+)
+
 var (
-	globalClientSessionCache  tls.ClientSessionCache
+	globalClientSessionCache tls.ClientSessionCache
 	globalClientXSessionCache xtls.ClientSessionCache
 	once                      sync.Once
 )

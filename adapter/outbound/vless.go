@@ -96,7 +96,7 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		if v.option.TLS {
 			host, _, _ := net.SplitHostPort(v.addr)
 
-			if v.option.Flow == vless.XRO || v.option.Flow == vless.XROU || v.option.Flow == vless.XRD || v.option.Flow == vless.XRDU {
+			if v.option.Flow == vless.XRO || v.option.Flow == vless.XROU || v.option.Flow == vless.XRS || v.option.Flow == vless.XRSU || v.option.Flow == vless.XRD || v.option.Flow == vless.XRDU {
 				xtlsConfig := &xtls.Config{
 					ServerName:         host,
 					InsecureSkipVerify: v.option.SkipCertVerify,
@@ -151,7 +151,7 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, 
 }
 
 func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
-	if (v.option.Flow == vless.XRO || v.option.Flow == vless.XRD) && metadata.DstPort == "443" {
+	if (v.option.Flow == vless.XRO || v.option.Flow == vless.XRS || v.option.Flow == vless.XRD) && metadata.DstPort == "443" {
 		return nil, fmt.Errorf("%s stopped UDP/443", v.option.Flow)
 	}
 
@@ -182,7 +182,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
 	if option.TLS && option.Network != "ws" && option.Flow != "" {
 		switch option.Flow {
-		case vless.XRO, vless.XRD, vless.XROU, vless.XRDU:
+		case vless.XRO, vless.XRD, vless.XRS, vless.XROU, vless.XRDU, vless.XRSU:
 			addons = &vless.Addons{
 				Flow: option.Flow,
 			}
