@@ -107,7 +107,7 @@ func newConn(conn net.Conn, client *Client, dst *vmess.DstAddr) (*Conn, error) {
 				xtlsConn.RPRX = true
 				xtlsConn.MARK = "XTLS"
 				if client.Addons.Flow == XRS {
-					client.Addons.Flow = XRS // TODO:force to XRD
+					client.Addons.Flow = XRD // TODO:force to XRD
 				}
 				if client.Addons.Flow == XRD || client.Addons.Flow == XRDU {
 					xtlsConn.DirectMode = true
