@@ -20,3 +20,11 @@ vendor
 
 # macOS file
 .DS_Store
+ui/CNAME
+ui/index.html
+ui/pac
+ui/assets/index.0bf7b2ad.js
+ui/assets/index.0e294c2a.css
+ui/assets/logo.b453e72f.png
+ui/assets/vendor.b176d855.js
+.vscode/launch.json
