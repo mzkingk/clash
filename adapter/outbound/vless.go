@@ -15,10 +15,13 @@ import (
 
 	"github.com/Dreamacro/clash/component/dialer"
 	"github.com/Dreamacro/clash/component/resolver"
+	"github.com/Dreamacro/clash/transport/gun"
 	"github.com/Dreamacro/clash/transport/vless"
 	"github.com/Dreamacro/clash/transport/vmess"
 	C "github.com/Dreamacro/clash/constant"
 	xtls "github.com/xtls/go"
+
+	"golang.org/x/net/http2"
 )
 
 const (
@@ -32,6 +35,11 @@ type Vless struct {
 	*Base
 	client *vless.Client
 	option *VlessOption
+
+	// for gun mux
+	gunTLSConfig *tls.Config
+	gunConfig    *gun.Config
+	transport    *http2.Transport
 }
 
 type VlessOption struct {
@@ -47,6 +55,7 @@ type VlessOption struct {
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	ServerName     string            `proxy:"servername,omitempty"`
 	Flow           string            `proxy:"flow,omitempty"`
+	GrpcOpts       GrpcOptions       `proxy:"grpc-opts,omitempty"`
 }
 
 func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
@@ -91,6 +100,8 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 		} else {
 			c, err = vmess.StreamWebsocketConn(c, wsOpts, nil)
 		}
+	case "grpc":
+		c, err = gun.StreamGunWithConn(c, v.gunTLSConfig, v.gunConfig)
 	default:
 		// handle TLS
 		if v.option.TLS {
@@ -139,18 +150,35 @@ func (v *Vless) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 	return v.client.StreamConn(c, parseVmessAddr(metadata))
 }
 
-func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	// gun transport
+	if v.transport != nil {
+		c, err := gun.StreamGunWithTransport(v.transport, v.gunConfig)
+		if err != nil {
+			return nil, err
+		}
+		defer safeConnClose(c, err)
+
+		c, err = v.client.StreamConn(c, parseVmessAddr(metadata))
+		if err != nil {
+			return nil, err
+		}
+
+		return NewConn(c, v), nil
+	}
+
 	c, err := dialer.DialContext(ctx, "tcp", v.addr)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
 	}
 	tcpKeepAlive(c)
+	defer safeConnClose(c, err)
 
 	c, err = v.StreamConn(c, metadata)
 	return NewConn(c, v), err
 }
 
-func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
+func (v *Vless) DialUDP(metadata *C.Metadata) (_ C.PacketConn, err error) {
 	if (v.option.Flow == vless.XRO || v.option.Flow == vless.XRS || v.option.Flow == vless.XRD) && metadata.DstPort == "443" {
 		return nil, fmt.Errorf("%s stopped UDP/443", v.option.Flow)
 	}
@@ -164,17 +192,33 @@ func (v *Vless) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 		metadata.DstIP = ip
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
-	defer cancel()
-	c, err := dialer.DialContext(ctx, "tcp", v.addr)
-	if err != nil {
-		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+	var c net.Conn
+	// gun transport
+	if v.transport != nil {
+		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
+		if err != nil {
+			return nil, err
+		}
+		defer safeConnClose(c, err)
+
+		c, err = v.client.StreamConn(c, parseVmessAddr(metadata))
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+		defer cancel()
+		c, err = dialer.DialContext(ctx, "tcp", v.addr)
+		if err != nil {
+			return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+		}
+		tcpKeepAlive(c)
+		defer safeConnClose(c, err)
+
+		c, err = v.StreamConn(c, metadata)
 	}
-	tcpKeepAlive(c)
-	c, err = v.StreamConn(c, metadata)
+
 	if err != nil {
 		return nil, fmt.Errorf("new vless client error: %v", err)
 	}
+
 	return newPacketConn(newVlessPacketConn(c, metadata.UDPAddr()), v), nil
 }
 
@@ -196,7 +240,14 @@ func NewVless(option VlessOption) (*Vless, error) {
 		return nil, err
 	}
 
-	return &Vless{
+	switch option.Network {
+	case "h2", "grpc":
+		if !option.TLS {
+			return nil, fmt.Errorf("TLS must be true with h2/grpc network")
+		}
+	}
+
+	v, err := &Vless{
 		Base: &Base{
 			name: option.Name,
 			addr: net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
@@ -206,6 +257,39 @@ func NewVless(option VlessOption) (*Vless, error) {
 		client: client,
 		option: &option,
 	}, nil
+
+	switch option.Network {
+	case "grpc":
+		dialFn := func(network, addr string) (net.Conn, error) {
+			c, err := dialer.DialContext(context.Background(), "tcp", v.addr)
+			if err != nil {
+				return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
+			}
+			tcpKeepAlive(c)
+			return c, nil
+		}
+
+		gunConfig := &gun.Config{
+			ServiceName: v.option.GrpcOpts.GrpcServiceName,
+			Host:        v.option.ServerName,
+		}
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: v.option.SkipCertVerify,
+			ServerName:         v.option.ServerName,
+		}
+
+		if v.option.ServerName == "" {
+			host, _, _ := net.SplitHostPort(v.addr)
+			tlsConfig.ServerName = host
+			gunConfig.Host = host
+		}
+
+		v.gunTLSConfig = tlsConfig
+		v.gunConfig = gunConfig
+		v.transport = gun.NewHTTP2Client(dialFn, tlsConfig)
+	}
+
+	return v, nil
 }
 
 func newVlessPacketConn(c net.Conn, addr net.Addr) *vlessPacketConn {

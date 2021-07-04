@@ -2,8 +2,8 @@ name: Go
 on:
   release:
     types: [published]
-  #push:
-  #  branches: [ master ]
+  push:
+    branches: [ master ]
   #  tags:
   #  - 'v*'
   watch:
