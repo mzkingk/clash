@@ -183,7 +183,6 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: tOption.SkipCertVerify,
 			ServerName:         tOption.ServerName,
-			ClientSessionCache: getClientSessionCache(),
 		}
 
 		t.transport = gun.NewHTTP2Client(dialFn, tlsConfig)

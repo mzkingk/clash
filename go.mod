@@ -10,16 +10,16 @@ require (
 	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/gorilla/websocket v1.4.2
 	github.com/lucas-clemente/quic-go v0.19.3
-	github.com/miekg/dns v1.1.42
+	github.com/miekg/dns v1.1.43
 	github.com/oschwald/geoip2-golang v1.5.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/xtls/go v0.0.0-20201118062508-3632bf3b7499
-	go.uber.org/atomic v1.7.0
-	golang.org/x/crypto v0.0.0-20210506145944-38f3c27a63bf
-	golang.org/x/net v0.0.0-20210508051633-16afe75a6701
+	go.uber.org/atomic v1.8.0
+	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
+	golang.org/x/net v0.0.0-20210614182718-04defd469f4e
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210507161434-a76c4d0a0096
-	google.golang.org/protobuf v1.23.0
+	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c
+        google.golang.org/protobuf v1.23.0
 	gopkg.in/yaml.v2 v2.4.0
 )
