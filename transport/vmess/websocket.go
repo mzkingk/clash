@@ -46,7 +46,6 @@ type WebsocketConfig struct {
 	TLS            bool
 	SkipCertVerify bool
 	ServerName     string
-	SessionCache   tls.ClientSessionCache
 	Ed             uint32
 }
 

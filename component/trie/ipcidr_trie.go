@@ -84,7 +84,7 @@ func ipCidrToSubIpCidr(ipNet *net.IPNet) ([]net.IP, int, bool, error) {
 	)
 
 	ip, isIpv4 := checkAndConverterIp(ipNet.IP)
-	ipList, newMaskSize, err = subIpCidr(ip, maskSize, true)
+	ipList, newMaskSize, err = subIpCidr(ip, maskSize, isIpv4)
 
 	return ipList, newMaskSize, isIpv4, err
 }
@@ -110,7 +110,12 @@ func subIpCidr(ip net.IP, maskSize int, isIpv4 bool) ([]net.IP, int, error) {
 		subIpCidrList = append(subIpCidrList, subIpCidr)
 	}
 
-	return subIpCidrList, lastByteMaskIndex * 8, nil
+	newMaskSize := (lastByteMaskIndex + 1) * 8
+	if !isIpv4 {
+		newMaskSize = (lastByteMaskIndex/2 + 1) * 16
+	}
+
+	return subIpCidrList, newMaskSize, nil
 }
 
 func addIpCidr(trie *IpCidrTrie, isIpv4 bool, ip net.IP, groupSize int) {
@@ -122,7 +127,16 @@ func addIpCidr(trie *IpCidrTrie, isIpv4 bool, ip net.IP, groupSize int) {
 }
 
 func addIpv4Cidr(trie *IpCidrTrie, ip net.IP, groupSize int) {
-	node := trie.ipv4Trie.getChild(uint32(ip[0]))
+	preNode := trie.ipv4Trie
+	node := preNode.getChild(uint32(ip[0]))
+	if node == nil {
+		err := preNode.addChild(uint32(ip[0]))
+		if err != nil {
+			return
+		}
+
+		node = preNode.getChild(uint32(ip[0]))
+	}
 
 	for i := 1; i < groupSize; i++ {
 		if node.Mark {
@@ -137,7 +151,16 @@ func addIpv4Cidr(trie *IpCidrTrie, ip net.IP, groupSize int) {
 			}
 		}
 
+		preNode = node
 		node = node.getChild(groupValue)
+		if node == nil {
+			err := preNode.addChild(uint32(ip[i-1]))
+			if err != nil {
+				return
+			}
+
+			node = preNode.getChild(uint32(ip[i-1]))
+		}
 	}
 
 	node.Mark = true
@@ -145,7 +168,16 @@ func addIpv4Cidr(trie *IpCidrTrie, ip net.IP, groupSize int) {
 }
 
 func addIpv6Cidr(trie *IpCidrTrie, ip net.IP, groupSize int) {
-	node := trie.ipv6Trie.getChild(getIpv6GroupValue(ip[0], ip[1]))
+	preNode := trie.ipv6Trie
+	node := preNode.getChild(getIpv6GroupValue(ip[0], ip[1]))
+	if node == nil {
+		err := preNode.addChild(getIpv6GroupValue(ip[0], ip[1]))
+		if err != nil {
+			return
+		}
+
+		node = preNode.getChild(getIpv6GroupValue(ip[0], ip[1]))
+	}
 
 	for i := 2; i < groupSize; i += 2 {
 		if node.Mark {
@@ -160,7 +192,16 @@ func addIpv6Cidr(trie *IpCidrTrie, ip net.IP, groupSize int) {
 			}
 		}
 
+		preNode = node
 		node = node.getChild(groupValue)
+		if node == nil {
+			err := preNode.addChild(getIpv6GroupValue(ip[i-2], ip[i-1]))
+			if err != nil {
+				return
+			}
+
+			node = preNode.getChild(getIpv6GroupValue(ip[i-2], ip[i-1]))
+		}
 	}
 
 	node.Mark = true
@@ -179,7 +220,7 @@ func cleanChild(node *IpCidrNode) {
 
 func search(root *IpCidrNode, groupValues []uint32) *IpCidrNode {
 	node := root.getChild(groupValues[0])
-	if node.Mark {
+	if node == nil || node.Mark {
 		return node
 	}
 
@@ -190,7 +231,7 @@ func search(root *IpCidrNode, groupValues []uint32) *IpCidrNode {
 
 		node = node.getChild(value)
 
-		if node.Mark {
+		if node == nil || node.Mark {
 			return node
 		}
 	}

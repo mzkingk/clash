@@ -150,8 +150,6 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 		ALPN:                option.ALPN,
 		ServerName:          option.Server,
 		SkipCertVerify:      option.SkipCertVerify,
-		ClientSessionCache:  getClientSessionCache(),
-		ClientXSessionCache: getClientXSessionCache(),
 	}
 
 	if option.SNI != "" {
