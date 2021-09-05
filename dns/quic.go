@@ -115,15 +115,14 @@ func (dc *quicClient) getSession() (quic.Session, error) {
 
 func (dc *quicClient) openSession() (quic.Session, error) {
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
 		NextProtos: []string{
 			"http/1.1", "h2", NextProtoDQ,
 		},
 		SessionTicketsDisabled: false,
 	}
 	quicConfig := &quic.Config{
-		ConnectionIDLength: 12,
-		HandshakeTimeout:   time.Second * 8,
+		ConnectionIDLength:   12,
+		HandshakeIdleTimeout: time.Second * 8,
 	}
 
 	log.Debugln("opening session to %s", dc.addr)
