@@ -133,14 +133,12 @@ func (t *Trojan) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 	return NewConn(c, t), err
 }
 
-// DialUDP implements C.ProxyAdapter
-func (t *Trojan) DialUDP(metadata *C.Metadata) (_ C.PacketConn, err error) {
-	if (t.instance.GetFlow() == trojan.XRD || t.instance.GetFlow() == trojan.XRO) && metadata.DstPort == "443" {
-		return nil, fmt.Errorf("%s stopped UDP/443", t.instance.GetFlow())
-	}
-
 // ListenPacketContext implements C.ProxyAdapter
 func (t *Trojan) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+	if (t.instance.GetFlow() == trojan.XRD || t.instance.GetFlow() == trojan.XRO) && metadata.DstPort == "443" {
+                return nil, fmt.Errorf("%s stopped UDP/443", t.instance.GetFlow())
+        }
+
 	var c net.Conn
 
 	// grpc transport

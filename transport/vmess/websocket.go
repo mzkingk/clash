@@ -28,15 +28,6 @@ type websocketConn struct {
 	rMux sync.Mutex
 	wMux sync.Mutex
 }
-type websocketWithEarlyDataConn struct {
-	net.Conn
-	underlay net.Conn
-	closed   bool
-	dialed   chan bool
-	cancel   context.CancelFunc
-	ctx      context.Context
-	config   *WebsocketConfig
-}
 
 type websocketWithEarlyDataConn struct {
 	net.Conn

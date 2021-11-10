@@ -14,7 +14,6 @@ import (
 	"github.com/Dreamacro/clash/component/resolver"
 	C "github.com/Dreamacro/clash/constant"
 	"github.com/Dreamacro/clash/constant/provider"
-	"github.com/Dreamacro/clash/context"
 	icontext "github.com/Dreamacro/clash/context"
 	"github.com/Dreamacro/clash/log"
 	"github.com/Dreamacro/clash/tunnel/statistic"

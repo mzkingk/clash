@@ -70,7 +70,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 
 	updateUsers(cfg.Users)
 	updateProxies(cfg.Proxies, cfg.Providers)
-	updateRules(cfg.Rules)
+	updateRules(cfg.Rules, cfg.RuleProviders)
 	updateHosts(cfg.Hosts)
 	updateProfile(cfg)
 	updateGeneral(cfg.General, force)
