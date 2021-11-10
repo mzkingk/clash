@@ -1,7 +1,7 @@
 name: Release
 on: 
   push:
-    branches: [ master, tmp]
+    branches: [master, tmp]
   watch:
     types: [started]
 jobs:
