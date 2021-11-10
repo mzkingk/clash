@@ -2,7 +2,6 @@ package socks
 
 import (
 	"io"
-	"io/ioutil"
 	"net"
 
 	"github.com/Dreamacro/clash/adapter/inbound"
@@ -80,7 +79,7 @@ func handleSocks(conn net.Conn, in chan<- C.ConnContext) {
 }
 
 func HandleSocks4(conn net.Conn, in chan<- C.ConnContext) {
-	target, _, err := socks4.ServerHandshake(conn, authStore.Authenticator())
+	addr, _, err := socks4.ServerHandshake(conn, authStore.Authenticator())
 	if err != nil {
 		conn.Close()
 		return
@@ -88,11 +87,7 @@ func HandleSocks4(conn net.Conn, in chan<- C.ConnContext) {
 	if c, ok := conn.(*net.TCPConn); ok {
 		c.SetKeepAlive(true)
 	}
-	if !target.IsSocks4A() {
-		in <- inbound.NewSocket(target, conn, C.SOCKS4)
-	} else {
-		in <- inbound.NewSocket(target, conn, C.SOCKS4A)
-	}
+	in <- inbound.NewSocket(socks5.ParseAddr(addr), conn, C.SOCKS4)
 }
 
 func HandleSocks5(conn net.Conn, in chan<- C.ConnContext) {
@@ -106,7 +101,7 @@ func HandleSocks5(conn net.Conn, in chan<- C.ConnContext) {
 	}
 	if command == socks5.CmdUDPAssociate {
 		defer conn.Close()
-		io.Copy(ioutil.Discard, conn)
+		io.Copy(io.Discard, conn)
 		return
 	}
 	in <- inbound.NewSocket(target, conn, C.SOCKS5)

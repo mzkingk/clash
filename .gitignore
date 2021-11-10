@@ -12,7 +12,7 @@ bin/*
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# dep
+# go mod vendor
 vendor
 
 # GoLand
@@ -28,3 +28,6 @@ ui/assets/index.0e294c2a.css
 ui/assets/logo.b453e72f.png
 ui/assets/vendor.b176d855.js
 .vscode/launch.json
+
+# test suite
+test/config/cache*

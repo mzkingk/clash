@@ -40,31 +40,7 @@ var (
 	ErrRequestUnknownCode      = errors.New("request failed with unknown code")
 )
 
-var _ net.Addr = (*Addr)(nil)
-
-// Addr implements net.Addr interface
-type Addr struct {
-	IP   net.IP
-	Host string
-	Port uint16
-}
-
-func (a *Addr) IsSocks4A() bool {
-	return a.Host != ""
-}
-
-func (a *Addr) Network() string {
-	return "tcp"
-}
-
-func (a *Addr) String() string {
-	if a.IsSocks4A() {
-		return net.JoinHostPort(a.Host, strconv.Itoa(int(a.Port)))
-	}
-	return net.JoinHostPort(a.IP.String(), strconv.Itoa(int(a.Port)))
-}
-
-func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr *Addr, command Command, err error) {
+func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr string, command Command, err error) {
 	var req [8]byte
 	if _, err = io.ReadFull(rw, req[:]); err != nil {
 		return
@@ -87,7 +63,7 @@ func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr *
 
 	var (
 		host   string
-		port   uint16
+		port   string
 		code   uint8
 		userID []byte
 	)
@@ -103,11 +79,11 @@ func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr *
 		host = string(target)
 	}
 
-	port = binary.BigEndian.Uint16(dstPort)
+	port = strconv.Itoa(int(binary.BigEndian.Uint16(dstPort)))
 	if host != "" {
-		addr = &Addr{Host: host, Port: port}
+		addr = net.JoinHostPort(host, port)
 	} else {
-		addr = &Addr{IP: dstIP, Port: port}
+		addr = net.JoinHostPort(net.IP(dstIP).String(), port)
 	}
 
 	// SOCKS4 only support USERID auth.
@@ -115,6 +91,7 @@ func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr *
 		code = RequestGranted
 	} else {
 		code = RequestIdentdMismatched
+		err = ErrRequestIdentdMismatched
 	}
 
 	var reply [8]byte
@@ -123,7 +100,10 @@ func ServerHandshake(rw io.ReadWriter, authenticator auth.Authenticator) (addr *
 	copy(reply[4:8], dstIP)
 	copy(reply[2:4], dstPort)
 
-	_, err = rw.Write(reply[:])
+	_, wErr := rw.Write(reply[:])
+	if err == nil {
+		err = wErr
+	}
 	return
 }
 
@@ -204,7 +184,7 @@ func isReservedIP(ip net.IP) bool {
 }
 
 func readUntilNull(r io.Reader) ([]byte, error) {
-	var buf = &bytes.Buffer{}
+	buf := &bytes.Buffer{}
 	var data [1]byte
 
 	for {

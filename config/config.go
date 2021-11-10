@@ -23,7 +23,7 @@ import (
 	ruleProvider "github.com/Dreamacro/clash/rule/provider"
 	T "github.com/Dreamacro/clash/tunnel"
 
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 // General config
@@ -63,7 +63,7 @@ type DNS struct {
 	Fallback          []dns.NameServer `yaml:"fallback"`
 	FallbackFilter    FallbackFilter   `yaml:"fallback-filter"`
 	Listen            string           `yaml:"listen"`
-	EnhancedMode      dns.EnhancedMode `yaml:"enhanced-mode"`
+	EnhancedMode      C.DNSMode        `yaml:"enhanced-mode"`
 	DefaultNameserver []dns.NameServer `yaml:"default-nameserver"`
 	FakeIPRange       *fakeip.Pool
 	Hosts             *trie.DomainTrie
@@ -81,6 +81,7 @@ type FallbackFilter struct {
 // Profile config
 type Profile struct {
 	StoreSelected bool `yaml:"store-selected"`
+	StoreFakeIP   bool `yaml:"store-fake-ip"`
 }
 
 // Experimental config
@@ -88,15 +89,15 @@ type Experimental struct{}
 
 // Config is clash config manager
 type Config struct {
-	General       *General
-	DNS           *DNS
-	Experimental  *Experimental
-	Hosts         *trie.DomainTrie
-	Profile       *Profile
-	Rules         []C.Rule
-	Users         []auth.AuthUser
-	Proxies       map[string]C.Proxy
-	Providers     map[string]providerTypes.ProxyProvider
+	General      *General
+	DNS          *DNS
+	Experimental *Experimental
+	Hosts        *trie.DomainTrie
+	Profile      *Profile
+	Rules        []C.Rule
+	Users        []auth.AuthUser
+	Proxies      map[string]C.Proxy
+	Providers    map[string]providerTypes.ProxyProvider
 	RuleProviders map[string]*ruleProvider.RuleProvider
 }
 
@@ -108,7 +109,7 @@ type RawDNS struct {
 	Fallback          []string          `yaml:"fallback"`
 	FallbackFilter    RawFallbackFilter `yaml:"fallback-filter"`
 	Listen            string            `yaml:"listen"`
-	EnhancedMode      dns.EnhancedMode  `yaml:"enhanced-mode"`
+	EnhancedMode      C.DNSMode         `yaml:"enhanced-mode"`
 	FakeIPRange       string            `yaml:"fake-ip-range"`
 	FakeIPFilter      []string          `yaml:"fake-ip-filter"`
 	DefaultNameserver []string          `yaml:"default-nameserver"`
@@ -191,7 +192,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		},
 	}
 
-	if err := yaml.Unmarshal(buf, &rawCfg); err != nil {
+	if err := yaml.Unmarshal(buf, rawCfg); err != nil {
 		return nil, err
 	}
 
@@ -230,7 +231,7 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 	}
 	config.Hosts = hosts
 
-	dnsCfg, err := parseDNS(rawCfg.DNS, hosts)
+	dnsCfg, err := parseDNS(rawCfg, hosts)
 	if err != nil {
 		return nil, err
 	}
@@ -538,6 +539,9 @@ func parseNameServer(servers []string) ([]dns.NameServer, error) {
 		case "quic":
 			addr, err = hostWithDefaultPort(u.Host, "784")
 			dnsNetType = "quic" // DNS over QUIC
+		case "dhcp":
+			addr = u.Host
+			dnsNetType = "dhcp" // UDP from DHCP
 		default:
 			return nil, fmt.Errorf("DNS NameServer[%d] unsupport scheme: %s", idx, u.Scheme)
 		}
@@ -588,7 +592,8 @@ func parseFallbackIPCIDR(ips []string) ([]*net.IPNet, error) {
 	return ipNets, nil
 }
 
-func parseDNS(cfg RawDNS, hosts *trie.DomainTrie) (*DNS, error) {
+func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie) (*DNS, error) {
+	cfg := rawCfg.DNS
 	if cfg.Enable && len(cfg.NameServer) == 0 {
 		return nil, fmt.Errorf("if DNS configuration is turned on, NameServer cannot be empty")
 	}
@@ -629,7 +634,7 @@ func parseDNS(cfg RawDNS, hosts *trie.DomainTrie) (*DNS, error) {
 		}
 	}
 
-	if cfg.EnhancedMode == dns.FAKEIP {
+	if cfg.EnhancedMode == C.DNSFakeIP {
 		_, ipnet, err := net.ParseCIDR(cfg.FakeIPRange)
 		if err != nil {
 			return nil, err
@@ -644,7 +649,12 @@ func parseDNS(cfg RawDNS, hosts *trie.DomainTrie) (*DNS, error) {
 			}
 		}
 
-		pool, err := fakeip.New(ipnet, 1000, host)
+		pool, err := fakeip.New(fakeip.Options{
+			IPNet:       ipnet,
+			Size:        1000,
+			Host:        host,
+			Persistence: rawCfg.Profile.StoreFakeIP,
+		})
 		if err != nil {
 			return nil, err
 		}
