@@ -1,5 +1,9 @@
 name: Release
-on: [push]
+on: 
+  push:
+    branches: [ master, tmp]
+  watch:
+    types: [started]
 jobs:
   build:
     runs-on: ubuntu-latest
