@@ -20,14 +20,14 @@ import (
 )
 
 var (
-	tcpQueue      = make(chan C.ConnContext, 200)
-	udpQueue      = make(chan *inbound.PacketAdapter, 200)
-	natTable      = nat.New()
-	rules         []C.Rule
-	proxies       = make(map[string]C.Proxy)
-	providers     map[string]provider.ProxyProvider
+	tcpQueue  = make(chan C.ConnContext, 200)
+	udpQueue  = make(chan *inbound.PacketAdapter, 200)
+	natTable  = nat.New()
+	rules     []C.Rule
+	proxies   = make(map[string]C.Proxy)
+	providers map[string]provider.ProxyProvider
 	ruleProviders map[string]*ruleProvider.RuleProvider
-	configMux     sync.RWMutex
+	configMux sync.RWMutex
 
 	// Outbound Rule
 	mode = Rule

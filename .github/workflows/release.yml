@@ -16,7 +16,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17.3
+          go-version: ${{ steps.version.outputs.go_version }}
       - name: upx install
         run: |
           wget https://github.com/upx/upx/releases/download/v3.96/upx-3.96-amd64_linux.tar.xz
@@ -41,17 +41,15 @@ jobs:
           go test ./...
 
       - name: Build
-        #if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           NAME: clash
           BINDIR: bin
         run: make -j releases
 
       - name: Upload Release
-        uses: svenstaro/upload-release-action@v2
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: bin/*
-          tag: AtuoBuild
-          overwrite: true
-          file_glob: true
+          files: bin/*
+          draft: true

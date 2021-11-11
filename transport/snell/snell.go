@@ -9,7 +9,7 @@ import (
 
 	"github.com/Dreamacro/clash/common/pool"
 
-	"github.com/ClashDotNetFramework/go-shadowsocks2/shadowaead"
+	"github.com/Dreamacro/go-shadowsocks2/shadowaead"
 )
 
 const (

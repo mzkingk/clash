@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	globalClientSessionCache tls.ClientSessionCache
+	globalClientSessionCache  tls.ClientSessionCache
 	globalClientXSessionCache xtls.ClientSessionCache
 	once                      sync.Once
 )
