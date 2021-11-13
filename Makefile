@@ -6,25 +6,27 @@ GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "github.com/Dreamacro/clas
 		-X "github.com/Dreamacro/clash/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
 
-PLATFORM_LIST = \
-	darwin-amd64 \
-	darwin-arm64 \
+PLATFORM_LIST_32 = \
 	linux-386 \
-	linux-amd64 \
 	linux-armv5 \
 	linux-armv6 \
 	linux-armv7 \
-	linux-armv8 \
 	linux-mips-softfloat \
 	linux-mips-hardfloat \
 	linux-mipsle-softfloat \
-	linux-mipsle-hardfloat \
+	linux-mipsle-hardfloat
+	
+PLATFORM_LIST_64 = \
+	darwin-amd64 \
+	darwin-arm64 \
+	linux-amd64 \
+	linux-armv8 \
 	linux-mips64 \
 	linux-mips64le \
-	freebsd-386 \
 	freebsd-amd64 \
-	freebsd-arm64
-
+	freebsd-arm64 \
+	freebsd-386
+	
 WINDOWS_ARCH_LIST = \
 	windows-386 \
 	windows-amd64 \
@@ -99,10 +101,16 @@ windows-arm64:
 windows-arm32v7:
 	GOARCH=arm GOOS=windows GOARM=7 $(GOBUILD) -o $(BINDIR)/$(NAME)-$@.exe
 
-gz_releases=$(addsuffix .gz, $(PLATFORM_LIST))
+gz_releases_32=$(addsuffix .gz, $(PLATFORM_LIST_32))
+gz_releases_64=$(addsuffix .gz, $(PLATFORM_LIST_64))
 zip_releases=$(addsuffix .zip, $(WINDOWS_ARCH_LIST))
 
-$(gz_releases): %.gz : %
+$(gz_releases_32): %.gz : %
+	chmod +x $(BINDIR)/$(NAME)-$(basename $@)
+	upx --best --lzma $(BINDIR)/$(NAME)-$(basename $@)
+	gzip -f -S -$(VERSION).gz $(BINDIR)/$(NAME)-$(basename $@)
+
+$(gz_releases_64): %.gz : %
 	chmod +x $(BINDIR)/$(NAME)-$(basename $@)
 	gzip -f -S -$(VERSION).gz $(BINDIR)/$(NAME)-$(basename $@)
 
@@ -111,8 +119,7 @@ $(zip_releases): %.zip : %
 
 all-arch: $(PLATFORM_LIST) $(WINDOWS_ARCH_LIST)
 
-releases: $(gz_releases) $(zip_releases)
-
+releases: $(gz_releases_32) $(gz_releases_64) $(zip_releases)
 lint:
 	golangci-lint run --disable-all -E govet -E gofumpt -E megacheck ./...
 
